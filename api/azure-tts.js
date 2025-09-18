@@ -2,7 +2,7 @@ export default async function handler(req, res) {
   // Configuration CORS pour Vapi
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Vapi-Secret');
   
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -13,9 +13,8 @@ export default async function handler(req, res) {
   }
   
   try {
-    // Extraire le texte depuis Vapi
-    const { message, call, voice } = req.body;
-    const text = message?.content || message?.text || req.body.text;
+    // Vapi envoie le texte dans ce format
+    const { text, sampleRate, voice } = req.body;
     
     if (!text) {
       console.log('Corps de requête reçu:', JSON.stringify(req.body, null, 2));
@@ -35,7 +34,7 @@ export default async function handler(req, res) {
     
     const selectedVoice = voiceMap[voice] || voiceMap.default;
     
-    console.log(`Génération TTS Azure pour: "${text.substring(0, 100)}..." avec voix: ${selectedVoice}`);
+    console.log(`Génération TTS Azure pour: "${text.substring(0, 100)}..." avec voix: ${selectedVoice}, sampleRate: ${sampleRate}`);
     
     // Vérification des variables d'environnement
     if (!process.env.AZURE_SPEECH_KEY || !process.env.AZURE_SPEECH_REGION) {
@@ -44,9 +43,6 @@ export default async function handler(req, res) {
         details: 'AZURE_SPEECH_KEY et AZURE_SPEECH_REGION requis'
       });
     }
-    
-    console.log('Région Azure:', process.env.AZURE_SPEECH_REGION);
-    console.log('Clé Azure utilisée:', process.env.AZURE_SPEECH_KEY?.substring(0, 10) + '...');
     
     // 1. Obtenir un token d'accès
     const tokenResponse = await fetch(`https://${process.env.AZURE_SPEECH_REGION}.api.cognitive.microsoft.com/sts/v1.0/issueToken`, {
@@ -76,15 +72,18 @@ export default async function handler(req, res) {
   </voice>
 </speak>`;
     
-    console.log('SSML généré:', ssml);
+    // 3. Format audio pour Vapi (PCM brut selon leur sampleRate)
+    const outputFormat = sampleRate === 24000 ? 
+      'raw-24khz-16bit-mono-pcm' : 
+      'raw-16khz-16bit-mono-pcm';
     
-    // 3. Appel à l'API Azure TTS
+    // 4. Appel à l'API Azure TTS
     const ttsResponse = await fetch(`https://${process.env.AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/ssml+xml',
-        'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3',
+        'X-Microsoft-OutputFormat': outputFormat,
         'User-Agent': 'vapi-azure-tts-proxy'
       },
       body: ssml
@@ -100,28 +99,22 @@ export default async function handler(req, res) {
       });
     }
     
-    // 4. Convertir la réponse en base64
+    // 5. Retourner l'audio PCM brut directement (format requis par Vapi)
     const audioBuffer = await ttsResponse.arrayBuffer();
-    const audioBase64 = Buffer.from(audioBuffer).toString('base64');
-    const audioUrl = `data:audio/mp3;base64,${audioBase64}`;
     
-    console.log(`Audio généré avec succès - Taille: ${audioBuffer.byteLength} bytes`);
+    console.log(`Audio PCM généré avec succès - Taille: ${audioBuffer.byteLength} bytes`);
     
-    // 5. Réponse pour Vapi
-    return res.status(200).json({
-      success: true,
-      audioUrl: audioUrl,
-      voice: selectedVoice,
-      message: `Audio Azure généré avec succès (${text.length} caractères)`,
-      timestamp: new Date().toISOString()
-    });
+    // 6. Réponse pour Vapi - DOIT être du PCM brut
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', audioBuffer.byteLength.toString());
+    
+    return res.status(200).send(Buffer.from(audioBuffer));
     
   } catch (error) {
     console.error('Erreur dans azure-tts:', error);
     return res.status(500).json({
       error: 'Erreur serveur interne',
       message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       timestamp: new Date().toISOString()
     });
   }

@@ -1,12 +1,11 @@
 const axios = require('axios');
 
-const AZURE_KEY = process.env.AZURE_KEY;
-const AZURE_REGION = 'francecentral'; // ou westeurope, selon ton compte
+const AZURE_KEY = process.env.AZURE_SPEECH_KEY;
+const AZURE_REGION = process.env.AZURE_SPEECH_REGION;
 const VOICE = 'fr-FR-DeniseNeural';
 
 export default async function handler(req, res) {
-  const message = req.body?.message;
-  const text = message?.text || 'Bonjour, je suis Denise.';
+  const text = req.body?.message?.text || "Bonjour, je suis Denise, votre assistante vocale.";
 
   try {
     const response = await axios({
@@ -15,7 +14,7 @@ export default async function handler(req, res) {
       headers: {
         'Ocp-Apim-Subscription-Key': AZURE_KEY,
         'Content-Type': 'application/ssml+xml',
-        'X-Microsoft-OutputFormat': 'raw-16khz-16bit-mono-pcm',
+        'X-Microsoft-OutputFormat': 'audio-16khz-32kbitrate-mono-mp3',
         'User-Agent': 'azure-vapi'
       },
       data: `
@@ -28,11 +27,10 @@ export default async function handler(req, res) {
       responseType: 'arraybuffer'
     });
 
-    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Type', 'audio/mpeg');
     res.send(response.data);
-
-  } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).json({ error: 'Erreur Azure TTS' });
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    res.status(500).json({ error: 'Erreur de synthèse vocale Azure.' });
   }
 }

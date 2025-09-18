@@ -1,0 +1,13 @@
+{
+  "name": "azure-tts-vapi",
+  "version": "1.0.0",
+  "description": "Azure TTS endpoint pour Vapi avec voix françaises (Denise, Henri, Vivienne)",
+  "main": "api/azure-tts.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "keywords": ["azure", "tts", "vapi", "speech", "français"],
+  "author": "Votre nom",
+  "license": "MIT"
+}

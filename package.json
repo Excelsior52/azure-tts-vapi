@@ -9,5 +9,8 @@
   },
   "keywords": ["azure", "tts", "vapi", "speech", "français"],
   "author": "Votre nom",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
 }
